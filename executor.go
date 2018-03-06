@@ -530,12 +530,12 @@ func resolveField(eCtx *executionContext, parentType *Object, source interface{}
 			if r, ok := r.(error); ok {
 				err = gqlerrors.FormatError(r)
 			}
-			if r, ok := r.(runtime.Error); ok {
+			if r, ok := r.(error).(runtime.Error); ok {
 				panic(gqlerrors.InternalError{r, FieldASTsToNodeASTs(fieldASTs)})
 			}
 			// send panic upstream
 			if _, ok := returnType.(*NonNull); ok {
-				panic(gqlerrors.InternalError{err, FieldASTsToNodeASTs(fieldASTs)})
+				panic(gqlerrors.FormatError(err))
 			}
 			eCtx.Errors = append(eCtx.Errors, gqlerrors.FormatError(err))
 			return result, resultState
