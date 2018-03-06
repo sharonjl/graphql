@@ -9,6 +9,9 @@ import (
 
 	"github.com/graphql-go/graphql/gqlerrors"
 	"github.com/graphql-go/graphql/language/ast"
+	"log"
+	"runtime/debug"
+	"runtime"
 )
 
 type ExecuteParams struct {
@@ -60,6 +63,10 @@ func Execute(p ExecuteParams) (result *Result) {
 				var err error
 				if r, ok := r.(error); ok {
 					err = gqlerrors.FormatError(r)
+				}
+				if e, ok := r.(gqlerrors.InternalError); ok {
+					log.Printf("internal server error:\n\t%v\n%s", e.Original, string(debug.Stack()))
+					err = gqlerrors.NewLocatedError("internal server error", e.Nodes)
 				}
 				exeContext.Errors = append(exeContext.Errors, gqlerrors.FormatError(err))
 				result.Errors = exeContext.Errors
@@ -513,7 +520,6 @@ func resolveField(eCtx *executionContext, parentType *Object, source interface{}
 	var returnType Output
 	defer func() (interface{}, resolveFieldResultState) {
 		if r := recover(); r != nil {
-
 			var err error
 			if r, ok := r.(string); ok {
 				err = NewLocatedError(
@@ -524,9 +530,12 @@ func resolveField(eCtx *executionContext, parentType *Object, source interface{}
 			if r, ok := r.(error); ok {
 				err = gqlerrors.FormatError(r)
 			}
+			if r, ok := r.(runtime.Error); ok {
+				panic(gqlerrors.InternalError{r, FieldASTsToNodeASTs(fieldASTs)})
+			}
 			// send panic upstream
 			if _, ok := returnType.(*NonNull); ok {
-				panic(gqlerrors.FormatError(err))
+				panic(gqlerrors.InternalError{err, FieldASTsToNodeASTs(fieldASTs)})
 			}
 			eCtx.Errors = append(eCtx.Errors, gqlerrors.FormatError(err))
 			return result, resultState
